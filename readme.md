@@ -73,7 +73,18 @@ Cache.Users.del(key)
 DCache.del(:users, key)
 ```
 
-Deletes the value from the cache. Does nothing if the key isn't found. The return value is currently always true.
+Deletes the value from the cache. Does nothing if the key isn't found. True
+if the key was found and delete (even if it was expired), false if the key
+was not in the cache
+
+### take/1 & take/2
+```
+Cache.Users.take(key)
+# OR
+DCache.take(:users, key)
+```
+
+Deletes and returns the value from the cache
 
 ### ttl/1 & ttl/2
 ```

@@ -27,8 +27,9 @@ defmodule DCache do
 				def setup(), do: DCache.Impl.setup(@config)
 				def get(key), do: DCache.Impl.get(key, @config)
 				def del(key), do: DCache.Impl.del(key, @config)
+				def take(key), do: DCache.Impl.take(key, @config)
 				def put(key, value, ttl), do: DCache.Impl.put(key, value, ttl, @config)
-				def ttl(key), do: DCache.Impl.ttl(key, @config)
+				def expires(key), do: DCache.Impl.expires(key, @config)
 				def fetch(key, fun, ttl \\ nil), do: DCache.Impl.fetch(key, fun, ttl, @config)
 				def fetch!(key, fun, ttl \\ nil), do: DCache.Impl.fetch!(key, fun, ttl, @config)
 				def size(), do: DCache.Impl.size(@config)
@@ -62,16 +63,23 @@ defmodule DCache do
 	def get(cache, key), do: DCache.Impl.get(key, get_config(cache))
 
 	@doc """
-	Delets the value from the cache, safe to call even if the key is not in the cache
+	Deletes the value from the cache, safe to call even if the key is not in the cache
 	"""
 	def del(cache, key), do: DCache.Impl.del(key, get_config(cache))
+
+	@doc """
+	Deletes and removes the value from the cache. Returns `nil` if not found.
+	Returns {:ok, {key, value, expires}} if found
+	"""
+	def take(cache, key), do: DCache.Impl.take(key, get_config(cache))
+
 
 	@doc """
 	Gets the unix time in seconds when the value will be considered expired.
 	Rrturns `nil` if the value is not found. The return value can
 	be in the past
 	"""
-	def ttl(cache, key), do: DCache.Impl.ttl(key, get_config(cache))
+	def expires(cache, key), do: DCache.Impl.expires(key, get_config(cache))
 
 	@doc """
 	Puts the value in the cache. TTL is a relative time in second.
@@ -144,7 +152,9 @@ defmodule DCache do
 				{:ok, value}
 			else
 				[] -> nil
-				false -> delete_from_segment(segment, key); nil
+				false ->
+					:ets.delete(segment, key)
+					nil
 			end
 		end
 
@@ -169,16 +179,22 @@ defmodule DCache do
 		end
 
 		def del(key, {segments, _max_per_segment}) do
-			key
-			|> segment_for_key(segments)
-			|> delete_from_segment(key)
+			segment = segment_for_key(key, segments)
+			case :ets.take(segment, key) do
+				[] -> false
+				_ -> true
+			end
 		end
 
-		defp delete_from_segment(segment, key) do
-			:ets.delete(segment, key)
+		def take(key, {segments, _max_per_segment}) do
+			segment = segment_for_key(key, segments)
+			case :ets.take(segment, key) do
+				[] -> nil
+				[item] -> {:ok, item}
+			end
 		end
 
-		def ttl(key, {segments, _max_per_segment}) do
+		def expires(key, {segments, _max_per_segment}) do
 			segment = segment_for_key(key, segments)
 			case :ets.lookup(segment, key) do
 				[{_, _, expires}] -> expires

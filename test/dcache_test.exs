@@ -45,7 +45,7 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.fetch("fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta UserCache.ttl("fetch4"), :erlang.system_time(:second) + 5, 1
+			assert_in_delta UserCache.expires("fetch4"), :erlang.system_time(:second) + 5, 1
 
 			assert_raise RuntimeError, fn ->
 				UserCache.fetch!("fail", fn _key -> {:error, "fail"} end)
@@ -55,13 +55,24 @@ defmodule DCache.Tests.DCache do
 		end
 
 		test "del" do
-			UserCache.del("del")
+			assert UserCache.del("del") == false
 
 			assert UserCache.put("del", "a", 10) == :ok
 			assert UserCache.get("del") == {:ok, "a"}
 
-			UserCache.del("del")
+			assert UserCache.del("del") == true
 			assert UserCache.get("del") == nil
+		end
+
+		test "take" do
+			assert UserCache.take("take") == nil
+
+			assert UserCache.put("take", "b", 10) == :ok
+			assert UserCache.get("take") == {:ok, "b"}
+
+			assert {:ok, {"take", "b", expires}} = UserCache.take("take")
+			assert_in_delta expires, :erlang.system_time(:second) + 10, 1
+			assert UserCache.get("take") == nil
 		end
 
 		test "prune on put" do
@@ -109,7 +120,7 @@ defmodule DCache.Tests.DCache do
 			assert DCache.fetch(:users, "fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta DCache.ttl(:users, "fetch4"), :erlang.system_time(:second) + 5, 1
+			assert_in_delta DCache.expires(:users, "fetch4"), :erlang.system_time(:second) + 5, 1
 
 			assert_raise RuntimeError, fn ->
 				DCache.fetch!(:users, "fail", fn _key -> {:error, "fail"} end)
@@ -119,13 +130,24 @@ defmodule DCache.Tests.DCache do
 		end
 
 		test "del" do
-			DCache.del(:users, "del")
+			assert DCache.del(:users, "del") == false
 
 			assert DCache.put(:users, "del", "a", 10) == :ok
 			assert DCache.get(:users, "del") == {:ok, "a"}
 
-			DCache.del(:users, "del")
+			assert DCache.del(:users, "del") == true
 			assert DCache.get(:users, "del") == nil
+		end
+
+		test "take" do
+			assert DCache.take(:users, "take") == nil
+
+			assert DCache.put(:users, "take", "b", 10) == :ok
+			assert DCache.get(:users, "take") == {:ok, "b"}
+
+			assert {:ok, {"take", "b", expires}} = DCache.take(:users, "take")
+			assert_in_delta expires, :erlang.system_time(:second) + 10, 1
+			assert DCache.get(:users, "take") == nil
 		end
 
 		test "prune on put" do
