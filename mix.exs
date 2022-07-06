@@ -11,6 +11,14 @@ defmodule DCache.MixProject do
 			elixir: "~> 1.13",
 			start_permanent: Mix.env() == :prod,
 			elixirc_paths: elixirc_paths(Mix.env())
+			description: "A simple caching library",
+			package: [
+				licenses: ["MIT"],
+				links: %{
+					"git" => "https://github.com/karlseguin/dcache"
+				},
+				maintainers: ["Karl Seguin"],
+			],
 		]
 	end
 
