@@ -1,10 +1,13 @@
 defmodule DCache.Tests.DCache do
 	use DCache.Tests
 	alias DCache.Tests.Cache.Users, as: UserCache
+	alias DCache.Tests.Cache.Products, as: ProductCache
 
 	setup_all do
 		:ok = UserCache.setup()
+		:ok = ProductCache.setup()
 		:ok = DCache.setup(:users, 100)
+		:ok = DCache.setup(:products, 10, segments: 2, purger: &DCache.Tests.Cache.custom_purger/1)
 		:ok
 	end
 
@@ -75,11 +78,19 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.get("take") == nil
 		end
 
-		test "prune on put" do
+		test "purge on put" do
 			for i <- 1..1001 do
 				assert UserCache.put(to_string(i), i, 100) == :ok
 			end
 			assert UserCache.size() < 950
+		end
+
+		test "custom purger" do
+			for i <- 1..100 do
+				assert ProductCache.put(to_string(i), i, 100) == :ok
+			end
+			assert :ets.lookup(DCache.Tests.Cache.Products0, :purger) == [purger: 51]
+			assert :ets.lookup(DCache.Tests.Cache.Products1, :purger) == [purger: 41]
 		end
 	end
 
@@ -150,11 +161,19 @@ defmodule DCache.Tests.DCache do
 			assert DCache.get(:users, "take") == nil
 		end
 
-		test "prune on put" do
+		test "purge on put" do
 			for i <- 1..1001 do
 				assert DCache.put(:users, to_string(i), i, 100) == :ok
 			end
 			assert DCache.size(:users) < 950
+		end
+
+		test "custom purger" do
+			for i <- 1..100 do
+				assert DCache.put(:products, to_string(i), i, 100) == :ok
+			end
+			assert :ets.lookup(:products0, :purger) == [purger: 51]
+			assert :ets.lookup(:products1, :purger) == [purger: 41]
 		end
 	end
 end

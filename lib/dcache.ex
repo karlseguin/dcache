@@ -118,14 +118,15 @@ defmodule DCache do
 		@moduledoc false
 
 		def config(cache, max, opts) do
+			purger = Keyword.get(opts, :purger, :blocking)
 			segment_count = Keyword.get(opts, :segments, 100)
 			segments = Enum.map(0..(segment_count)-1, fn i ->
 				String.to_atom("#{cache}#{i}")
 			end)
-			{List.to_tuple(segments), trunc(max / segment_count)}
+			{List.to_tuple(segments), trunc(max / segment_count), purger}
 		end
 
-		def setup({segments, _max_per_segment}) do
+		def setup({segments, _max_per_segment, _purger}) do
 			reduce_segments(segments, nil, fn segment, _->
 				:ets.new(segment, [
 					:set,
@@ -139,7 +140,7 @@ defmodule DCache do
 			:ok
 		end
 
-		def get(key, {segments, _max_per_segment}) do
+		def get(key, {segments, _max_per_segment, _purger}) do
 			key
 			|> segment_for_key(segments)
 			|> get_from_segment(key)
@@ -158,27 +159,31 @@ defmodule DCache do
 			end
 		end
 
-		def put(key, value, ttl, {segments, max_per_segment}) do
+		def put(key, value, ttl, {segments, max_per_segment, purger}) do
 			key
 			|> segment_for_key(segments)
-			|> put_in_segment(key, value, ttl, max_per_segment)
+			|> put_in_segment(key, value, ttl, max_per_segment, purger)
 		end
 
-		defp put_in_segment(segment, key, value, ttl, max_per_segment) do
+		defp put_in_segment(segment, key, value, ttl, max_per_segment, purger) do
 			expires = :erlang.system_time(:second) + ttl
 			entry = {key, value, expires}
 			case :ets.insert_new(segment, entry) do
 				false -> :ets.insert(segment, entry)
 				true ->
 					if :ets.info(segment, :size) > max_per_segment do
-						:ets.delete_all_objects(segment)
-						:ets.insert_new(segment, entry) # re-insert this one we just inserted
+						case purger do
+							:blocking ->
+								:ets.delete_all_objects(segment)
+								:ets.insert_new(segment, entry) # re-insert this one we just inserted
+							fun -> fun.(segment)
+						end
 					end
 			end
 			:ok
 		end
 
-		def del(key, {segments, _max_per_segment}) do
+		def del(key, {segments, _max_per_segment, _purger}) do
 			segment = segment_for_key(key, segments)
 			case :ets.take(segment, key) do
 				[] -> false
@@ -186,7 +191,7 @@ defmodule DCache do
 			end
 		end
 
-		def take(key, {segments, _max_per_segment}) do
+		def take(key, {segments, _max_per_segment, _purger}) do
 			segment = segment_for_key(key, segments)
 			case :ets.take(segment, key) do
 				[] -> nil
@@ -194,7 +199,7 @@ defmodule DCache do
 			end
 		end
 
-		def expires(key, {segments, _max_per_segment}) do
+		def expires(key, {segments, _max_per_segment, _purger}) do
 			segment = segment_for_key(key, segments)
 			case :ets.lookup(segment, key) do
 				[{_, _, expires}] -> expires
@@ -202,13 +207,13 @@ defmodule DCache do
 			end
 		end
 
-		def fetch(key, fun, ttl, {segments, max_per_segment}) do
+		def fetch(key, fun, ttl, {segments, max_per_segment, purger}) do
 			segment = segment_for_key(key, segments)
 			case get_from_segment(segment, key) do
 				nil ->
 					case fun.(key) do
-						{:ok, value} = ok -> put_in_segment(segment, key, value, ttl, max_per_segment); ok
-						{:ok, value, ttl} -> put_in_segment(segment, key, value, ttl, max_per_segment); {:ok, value}
+						{:ok, value} = ok -> put_in_segment(segment, key, value, ttl, max_per_segment, purger); ok
+						{:ok, value, ttl} -> put_in_segment(segment, key, value, ttl, max_per_segment, purger); {:ok, value}
 						{:error, _} = err -> err
 						{:skip, value} -> value
 					end
@@ -229,7 +234,7 @@ defmodule DCache do
 			elem(segments, hash)
 		end
 
-		def size({segments, _max_per_segment}) do
+		def size({segments, _max_per_segment, _purger}) do
 			reduce_segments(segments, 0, fn segment, count ->
 				count + :ets.info(segment, :size)
 			end)

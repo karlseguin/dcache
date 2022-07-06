@@ -9,16 +9,18 @@ While a maximum cache size must be configured, the size limit is enforced on the
 
 The cache spawns no additional process. 
 
-`put` *may* result in an O(N) operation when a segment is (N = MAX_SIZE / NUMBER_OF_SEGMENT). Creating a cache with more segment reduces this cost. Specifically, the O(N) operation is a call to :ets.delete_all_objects/1.
+`put` *may* result in an O(N) operation when a segment is (N = MAX_SIZE / NUMBER_OF_SEGMENT). Creating a cache with more segment reduces this cost. Specifically, the O(N) operation is a call to :ets.delete_all_objects/1. This behavior can be customized. (This default behavior _might_ change and _might_ involve spawning a process)
 
 The cache will never grow beyond the configured MAX_SIZE.
 
 Your keys might hash to only 1 or a few segments. This would negatively impact performance. However, this would likely require a very unfortunate set of keys (e.g. integers with a fixed gaps between them).
 
+No dependencies & a single file. 
+
 ## Usage 1
 The preferred usage, which offers better performance, is to use the `define/3` macro:
 
-```
+```elixir
 defmodule MyApp.Cache do
   require DCache
 
@@ -29,28 +31,28 @@ end
 
 And then call the following on application start:
 
-```
+```elixir
 MyApp.Cache.Users.setup()
 MyApp.Cache.Products.setup()
 ```
 
 You can then use the caching methods on the created module, e.g:
 
-```
+```elixir
 MyApp.Cache.Users.get(KEY)
 ```
 
 ## Usage 2
 Alternatively, you can create the cache at runtime. Note that this will require 1 extra ETS lookup for every call, as well as requiring 1 extra ETS table to be allocated.
 
-```
+```elixir
 DCache.setup(:users, 100_000)
 DCache.setup(:products, 1_000_000, segments: 100)
 ```
 
 Which you can then use as:
 
-```
+```elixir
 DCache.get(:users, KEY)
 ```
 
@@ -58,7 +60,7 @@ DCache.get(:users, KEY)
 Regardless of which of the above two approaches you use, the same functionality is available:
 
 ### get/1 & get/2
-```
+```elixir
 Cache.Users.get(key)
 # OR
 DCache.get(:users, key)
@@ -67,7 +69,7 @@ DCache.get(:users, key)
 Returns the value from the cache. Returns `nil` if the key isn't found or if the value is expired.
 
 ### del/1 & del/2
-```
+```elixir
 Cache.Users.del(key)
 # OR
 DCache.del(:users, key)
@@ -78,7 +80,7 @@ if the key was found and delete (even if it was expired), false if the key
 was not in the cache
 
 ### take/1 & take/2
-```
+```elixir
 Cache.Users.take(key)
 # OR
 DCache.take(:users, key)
@@ -87,7 +89,7 @@ DCache.take(:users, key)
 Deletes and returns the value from the cache
 
 ### ttl/1 & ttl/2
-```
+```elixir
 Cache.Users.ttl(key)
 # OR
 DCache.ttl(:users, key)
@@ -96,7 +98,7 @@ DCache.ttl(:users, key)
 Returns the unix time, in seconds, when the value will be considered expired. Returns `nil` if the key isn't found. This can return a value which is less than now.
 
 ### put/3 & put/4
-```
+```elixir
 Cache.Users.put(key, value, ttl)
 # OR
 DCache.put(:users, key, value, ttl)
@@ -106,7 +108,7 @@ Stores the value in the cache. The ttl is given in seconds relative to now (e.g.
 
 
 ### fetch/2, fetch/3 & fetch/4
-```
+```elixir
 Cache.Users.fetch(key, fun)
 # OR
 DCache.fetch(:users, key, fun)
@@ -131,10 +133,22 @@ Same as `fetch/2`, `fetch/3` & `fetch/4`, but unwraps `{:ok, value}` into `value
 
 
 ### size/0 & size/1
-```
+```elixir
 Cache.Users.size()
 # OR
 DCache.size(:users)
 ```
 
 Returns the total number of items in the cache, including expired items. This is an O(N) operation where N is the number of segments (which will typically be small).
+
+
+## Custom Purgers
+By default, when a segment is full, `:ets.delete_all_objects/1` is used to erase the segment. This behavior can be changed by specifying a custom purging function when creating the cache:
+
+```elixir
+DCache.define(Users, 100_000, purger: &MyApp.Cache.purge_users/1)
+# or
+DCache.setup(:users, 100_000, purger: &MyApp.Cache.purge_users/1)
+```
+
+The purger receives the ETS name of the segment that is full.
