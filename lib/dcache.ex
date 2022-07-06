@@ -17,7 +17,7 @@ defmodule DCache do
 
 		opts:
 			segments: integer
-				The number of segments to create (defaults to 10)
+				The number of segments to create (defaults to 100)
 	"""
 	defmacro define(cache, max, opts \\ []) do
 		quote location: :keep do
@@ -47,7 +47,7 @@ defmodule DCache do
 
 		opts:
 			segments: integer
-				The number of segments to create (defaults to 10)
+				The number of segments to create (defaults to 100)
 	"""
 	def setup(cache, max, opts \\ []) do
 		config = DCache.Impl.config(cache, max, opts)
@@ -110,7 +110,7 @@ defmodule DCache do
 		@moduledoc false
 
 		def config(cache, max, opts) do
-			segment_count = Keyword.get(opts, :segments, 10)
+			segment_count = Keyword.get(opts, :segments, 100)
 			segments = Enum.map(0..(segment_count)-1, fn i ->
 				String.to_atom("#{cache}#{i}")
 			end)

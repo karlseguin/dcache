@@ -1,7 +1,7 @@
 A simple, fast and process-free cache. Or, a Dumb Cache.
 
 # Overview
-The cache is broken into a configurable number of ETS tables (called segments). The segment for a given key is `:erlang.phash2(key, NUMBER_OF_SEGMENT)` and all operations (get, put, del, ttl, ...) are directed to the correct segment.
+The cache is broken into a configurable number of ETS tables (called segments, defaults to 100). The segment for a given key is `:erlang.phash2(key, NUMBER_OF_SEGMENT)` and all operations (get, put, del, ttl, ...) are directed to the correct segment.
 
 Expired values are only removed from the cache when `get` is called on them.
 
