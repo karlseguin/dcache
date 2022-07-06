@@ -58,12 +58,12 @@ defmodule DCache.Tests.DCache do
 		end
 
 		test "del" do
-			assert UserCache.del("del") == false
+			assert UserCache.del("del") == :ok
 
 			assert UserCache.put("del", "a", 10) == :ok
 			assert UserCache.get("del") == {:ok, "a"}
 
-			assert UserCache.del("del") == true
+			assert UserCache.del("del") == :ok
 			assert UserCache.get("del") == nil
 		end
 
@@ -141,12 +141,12 @@ defmodule DCache.Tests.DCache do
 		end
 
 		test "del" do
-			assert DCache.del(:users, "del") == false
+			assert DCache.del(:users, "del") == :ok
 
 			assert DCache.put(:users, "del", "a", 10) == :ok
 			assert DCache.get(:users, "del") == {:ok, "a"}
 
-			assert DCache.del(:users, "del") == true
+			assert DCache.del(:users, "del") == :ok
 			assert DCache.get(:users, "del") == nil
 		end
 

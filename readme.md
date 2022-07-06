@@ -73,9 +73,7 @@ Cache.Users.del(key)
 DCache.del(:users, key)
 ```
 
-Deletes the value from the cache. Does nothing if the key isn't found. True
-if the key was found and delete (even if it was expired), false if the key
-was not in the cache
+Deletes the value from the cache. Does nothing if the key isn't found. Always returns `:ok`. Use the lower level `take/1` or `take/2` if you need to delete the key and know whether the key existed.
 
 ### take/1 & take/2
 ```elixir

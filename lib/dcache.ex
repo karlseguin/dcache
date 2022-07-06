@@ -185,10 +185,8 @@ defmodule DCache do
 
 		def del(key, {segments, _max_per_segment, _purger}) do
 			segment = segment_for_key(key, segments)
-			case :ets.take(segment, key) do
-				[] -> false
-				_ -> true
-			end
+			:ets.delete(segment, key)
+			:ok
 		end
 
 		def take(key, {segments, _max_per_segment, _purger}) do
