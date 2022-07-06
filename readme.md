@@ -1,21 +1,19 @@
-A simple, fast and process-free cache. Or, a Dumb Cache.
+A simple and fast cache. Or, a Dumb Cache.
 
 # Overview
-The cache is broken into a configurable number of ETS tables (called segments, defaults to 100). The segment for a given key is `:erlang.phash2(key, NUMBER_OF_SEGMENT)` and all operations (get, put, del, ttl, ...) are directed to the correct segment.
+The cache is broken into a configurable number of ETS tables (called segments, defaults to 100). The segment for a given key is `:erlang.phash2(key, NUMBER_OF_SEGMENT)` and all operations (get, put, del, expires, ...) are directed to the segment.
 
 Expired values are only removed from the cache when `get` is called on them.
 
 While a maximum cache size must be configured, the size limit is enforced on the segment. That is, given 10 segments and a max size of 10_000, the maximum size of each segment will be 1000. When a segment is full, the segment is erased.
 
-The cache spawns no additional process. 
+When new values are inserted into a segment (e.g. via `put` or `fetch`), the size of the segment is checked. If necessary, the segment is purged. Currently, `:ets.delete_all_objects/1` is called. This is simple and functional, but blocking. A more scalable solution, likely spawning a process and  iterating through the segment, will be the default in the near future. The purginb behavior is customizable (via the `purger` option when creating the cache).
 
-`put` *may* result in an O(N) operation when a segment is (N = MAX_SIZE / NUMBER_OF_SEGMENT). Creating a cache with more segment reduces this cost. Specifically, the O(N) operation is a call to :ets.delete_all_objects/1. This behavior can be customized. (This default behavior _might_ change and _might_ involve spawning a process)
-
-The cache will never grow beyond the configured MAX_SIZE.
+With the current purger, the cache will not grow beyond the configured MAX_SIZE. With the planned asynchronous purger, the cache could grow very briefly beyond MAX_SIZE.
 
 Your keys might hash to only 1 or a few segments. This would negatively impact performance. However, this would likely require a very unfortunate set of keys (e.g. integers with a fixed gaps between them).
 
-No dependencies & a single file. 
+No dependencies, and a single file. Copy and paste it into your project.
 
 ## Usage 1
 The preferred usage, which offers better performance, is to use the `define/3` macro:
