@@ -6,8 +6,16 @@ defmodule DCache.Tests.DCache do
 	setup_all do
 		:ok = UserCache.setup()
 		:ok = ProductCache.setup()
-		:ok = DCache.setup(:users, 100)
+		:ok = DCache.setup(:users, 100, purger: :no_spawn)
 		:ok = DCache.setup(:products, 10, segments: 2, purger: &DCache.Tests.Cache.custom_purger/1)
+		:ok
+	end
+
+	setup do
+		UserCache.clear()
+		ProductCache.clear()
+		DCache.clear(:users)
+		DCache.clear(:products)
 		:ok
 	end
 
@@ -174,6 +182,50 @@ defmodule DCache.Tests.DCache do
 			end
 			assert :ets.lookup(:products0, :purger) == [purger: 51]
 			assert :ets.lookup(:products1, :purger) == [purger: 41]
+		end
+	end
+
+	describe "purgers" do
+		test "expiration-based" do
+			DCache.setup(:c1, 1_000, segments: 5, purger: :default)
+			DCache.setup(:c2, 1_000, segments: 5, purger: :no_spawn)
+			Enum.each(1..1001, fn i ->
+				ttl = case rem(i, 2) do
+					0 -> 10
+					1 -> -10
+				end
+				DCache.put(:c1, i, i, ttl)
+				DCache.put(:c2, i, i, ttl)
+			end)
+
+			# we don't know for sure what happened, but we do know:
+			# A - Some items should have been purged
+			# B - Only expired items should have been purged
+			#     (Or, inversely, no non-expired items should have been purged)
+
+			assert DCache.size(:c1) < 900
+			assert DCache.size(:c2) < 900
+
+			Enum.each(1..1001, fn i ->
+				if rem(i, 2) == 0 do
+					assert DCache.get(:c1, i) == {:ok, i}
+					assert DCache.get(:c2, i) == {:ok, i}
+				end
+			end)
+		end
+
+		test "random-based" do
+			DCache.setup(:c1, 1_000, segments: 5, purger: :default)
+			DCache.setup(:c2, 1_000, segments: 5, purger: :no_spawn)
+			Enum.each(1..1001, fn i ->
+				DCache.put(:c1, i, i, 10)
+				DCache.put(:c2, i, i, 10)
+			end)
+
+			# we don't know for sure what happened, but we do know
+			# that some items, even though they aren't expired, should have been purged
+			assert DCache.size(:c1) < 900
+			assert DCache.size(:c2) < 900
 		end
 	end
 end

@@ -7,13 +7,11 @@ Expired values are only removed from the cache when `get` is called on them.
 
 While a maximum cache size must be configured, the size limit is enforced on the segment. That is, given 10 segments and a max size of 10_000, the maximum size of each segment will be 1000. When a segment is full, the segment is erased.
 
-When new values are inserted into a segment (e.g. via `put` or `fetch`), the size of the segment is checked. If necessary, the segment is purged. Currently, `:ets.delete_all_objects/1` is called. This is simple and functional, but blocking. A more scalable solution, likely spawning a process and  iterating through the segment, will be the default in the near future. The purginb behavior is customizable (via the `purger` option when creating the cache).
-
-With the current purger, the cache will not grow beyond the configured MAX_SIZE. With the planned asynchronous purger, the cache could grow very briefly beyond MAX_SIZE.
+When new values are inserted into a segment (e.g. via `put` or `fetch`), the size of the segment is checked. If necessary, the segment is purged. The purging behavior is customizable.
 
 Your keys might hash to only 1 or a few segments. This would negatively impact performance. However, this would likely require a very unfortunate set of keys (e.g. integers with a fixed gaps between them).
 
-No dependencies, and a single file. Copy and paste it into your project.
+Single file with no dependencies. Copy and paste it into your project.
 
 ## Usage 1
 The preferred usage, which offers better performance, is to use the `define/3` macro:
@@ -137,9 +135,32 @@ DCache.size(:users)
 
 Returns the total number of items in the cache, including expired items. This is an O(N) operation where N is the number of segments (which will typically be small).
 
+### clear/0 & clear/1
+```elixir
+Cache.Users.clear()
+# OR
+DCache.clear(:users)
+```
+
+Clears the cache. This blocks all other operations on the cache on a per-segment level, so it should be used sparingly.
+
+## Option
+Both ways of creating a cache, using the `define/3` macro or calling `DCache.setup/3` takes a keyword list with optional parameters.
+
+* `:segments` - The number of segments to create. Each segment is 1 ets table. The default depends on the caches configured `max` size. For caches with a max size => 10_000, the segment defaults to 100.
+
+* `:purger` - The purger to use. Defaults to `:default`, but can also be `:no_spawn`, `:blocking` or a custom function. See the following section for more details on purgers.
 
 ## Custom Purgers
-By default, when a segment is full, `:ets.delete_all_objects/1` is used to erase the segment. This behavior can be changed by specifying a custom purging function when creating the cache:
+Whenever a segment needs to grow, the size of the segment is compared against the maximum allowed segment size. If necessary, the segment is purged. This purging strategy is customizable.
+
+The default purger spawns a process and removes all expired values from the segment. If no expired keys exist, the purger will randomly remove keys from the cache. If this also fails, the purger will fallback to using `:ets.delete_all_object/1`, which is blocking. Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.)
+
+As an alternative, the `purger: :no_spawn` option can be specified when creating the cache. This behaves exactly like the default purger, but will not spawn a new process. Instead the purge operation will run as part of the the `put` or `fetch` operation that caused the insert, blocking it. Like the default purger, a sentinel value is used to ensure only 1 purger will execute per segment.
+
+The `purger: :blocking` option simply uses `:ets.delete_all_objects/1` on the segment. This blocks all operations on the segment (including gets), but is much faster. Using `purger: :blocking` when segments are very small is a reasonable option.
+
+Finally, a custom purger can be specified:
 
 ```elixir
 DCache.define(Users, 100_000, purger: &MyApp.Cache.purge_users/1)
