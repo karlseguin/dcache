@@ -32,6 +32,7 @@ defmodule DCache do
 				def clear(), do: DCache.Impl.clear(@config)
 				def get(key), do: DCache.Impl.get(key, @config)
 				def del(key), do: DCache.Impl.del(key, @config)
+				def ttl(key), do: DCache.Impl.ttl(key, @config)
 				def take(key), do: DCache.Impl.take(key, @config)
 				def put(key, value, ttl), do: DCache.Impl.put(key, value, ttl, @config)
 				def expires(key), do: DCache.Impl.expires(key, @config)
@@ -79,11 +80,17 @@ defmodule DCache do
 	def del(cache, key), do: DCache.Impl.del(key, get_config(cache))
 
 	@doc """
+	Returns the time in second until the value expires. `nil` if the key isn't
+	found. Can return a negative value if the item has expired but has not
+	been purged yet
+	"""
+	def ttl(cache, key), do: DCache.Impl.ttl(key, get_config(cache))
+
+	@doc """
 	Deletes and removes the value from the cache. Returns `nil` if not found.
 	Returns {:ok, {key, value, expires}} if found
 	"""
 	def take(cache, key), do: DCache.Impl.take(key, get_config(cache))
-
 
 	@doc """
 	Gets the unix time in seconds when the value will be considered expired.
@@ -225,6 +232,14 @@ defmodule DCache do
 			segment = segment_for_key(key, segments)
 			:ets.delete(segment, key)
 			:ok
+		end
+
+		def ttl(key, {segments, _max_per_segment, _purger}) do
+			segment = segment_for_key(key, segments)
+			case :ets.lookup(segment, key) do
+				[{_, _, expiry}] -> expiry - :erlang.monotonic_time(:second)
+				_ -> nil
+			end
 		end
 
 		def take(key, {segments, _max_per_segment, _purger}) do

@@ -20,17 +20,22 @@ defmodule DCache.Tests.DCache do
 	end
 
 	describe "defined" do
-		test "get / put" do
+		test "get / put / ttl" do
 			assert UserCache.get("k") == nil
+			assert UserCache.ttl("k") == nil
 
 			assert UserCache.put("k", 1, 10) == :ok
 			assert UserCache.get("k") == {:ok, 1}
+			assert UserCache.ttl("k") == 10
 
-			assert UserCache.put("k", 2, 10) == :ok
+			assert UserCache.put("k", 2, 12) == :ok
 			assert UserCache.get("k") == {:ok, 2}
+			assert UserCache.ttl("k") == 12
 
 			assert UserCache.put("stale", 3, -10) == :ok
+			assert UserCache.ttl("stale") == -10
 			assert UserCache.get("stale") == nil
+			assert UserCache.ttl("stale") == nil
 		end
 
 		test "fetch" do
@@ -103,17 +108,22 @@ defmodule DCache.Tests.DCache do
 	end
 
 	describe "dynamic" do
-		test "get / put" do
+		test "get / put / ttl" do
 			assert DCache.get(:users, "k") == nil
+			assert DCache.ttl(:users, "k") == nil
 
 			assert DCache.put(:users, "k", 1, 10) == :ok
 			assert DCache.get(:users, "k") == {:ok, 1}
+			assert DCache.ttl(:users, "k") == 10
 
-			assert DCache.put(:users, "k", 2, 10) == :ok
+			assert DCache.put(:users, "k", 2, 12) == :ok
 			assert DCache.get(:users, "k") == {:ok, 2}
+			assert DCache.ttl(:users, "k") == 12
 
 			assert DCache.put(:users, "stale", 3, -10) == :ok
+			assert DCache.ttl(:users, "stale") == -10
 			assert DCache.get(:users, "stale") == nil
+			assert DCache.ttl(:users, "stale") == nil
 		end
 
 		test "fetch" do
