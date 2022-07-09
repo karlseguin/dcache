@@ -193,6 +193,13 @@ defmodule DCache.Tests.DCache do
 			assert :ets.lookup(:products0, :purger) == [purger: 51]
 			assert :ets.lookup(:products1, :purger) == [purger: 41]
 		end
+
+		test "destroy" do
+			DCache.setup(:temp, 100)
+			DCache.put(:temp, "a", 1, 100)
+			DCache.destroy(:temp)
+			assert_raise ArgumentError, fn -> DCache.get(:temp, "a") end
+		end
 	end
 
 	describe "purgers" do
@@ -236,6 +243,20 @@ defmodule DCache.Tests.DCache do
 			# that some items, even though they aren't expired, should have been purged
 			assert DCache.size(:c1) < 900
 			assert DCache.size(:c2) < 900
+		end
+
+		test "none purger" do
+			DCache.setup(:c3, 10, segments: 2, purger: :none)
+			Enum.each(1..100, fn i ->
+				DCache.put(:c3, i, i, 10)
+			end)
+
+			assert DCache.size(:c3) == 100
+
+			# let's make absolutely sure
+			Enum.each(1..100, fn i ->
+				assert DCache.get(:c3, i) == {:ok, i}
+			end)
 		end
 	end
 end

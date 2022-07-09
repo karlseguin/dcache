@@ -21,7 +21,7 @@ defmodule DCache do
 
 			purger: symbol | function
 				The purger to use, defaults to `:default`
-				Supported values: `:default`, `:no_spawn`, `:blocking` or a custom function
+				Supported values: `:default`, `:no_spawn`, `:blocking`, `:none` or a custom function
 	"""
 	defmacro define(cache, max, opts \\ []) do
 		quote location: :keep do
@@ -30,6 +30,7 @@ defmodule DCache do
 
 				def setup(), do: DCache.Impl.setup(@config)
 				def clear(), do: DCache.Impl.clear(@config)
+				def destroy(), do: DCache.Impl.destroy(@config)
 				def get(key), do: DCache.Impl.get(key, @config)
 				def del(key), do: DCache.Impl.del(key, @config)
 				def ttl(key), do: DCache.Impl.ttl(key, @config)
@@ -68,6 +69,15 @@ defmodule DCache do
 	severely limited.
 	"""
 	def clear(cache), do: DCache.Impl.clear(get_config(cache))
+
+	@doc """
+	Destroys the cache. Any call to the cache once destroy is called will raise
+	an ArgumentError.
+	"""
+	def destroy(cache) do
+		DCache.Impl.destroy(get_config(cache))
+		:ets.delete(cache)
+	end
 
 	@doc """
 	Gets the value from the cache, returning nil if not found or expired
@@ -171,6 +181,12 @@ defmodule DCache do
 			end)
 		end
 
+		def destroy({segments, _max_per_segment, _purger}) do
+			reduce_segments(segments, nil, fn segment, _ ->
+				:ets.delete(segment)
+			end)
+		end
+
 		def get(key, {segments, _max_per_segment, _purger}) do
 			key
 			|> segment_for_key(segments)
@@ -204,9 +220,6 @@ defmodule DCache do
 				true ->
 					if :ets.info(segment, :size) > max_per_segment do
 						case purger do
-							:blocking ->
-								:ets.delete_all_objects(segment)
-								:ets.insert_new(segment, entry) # re-insert this one we just inserted
 							:default ->
 								# Only do this if purger isn't already running.
 								# Insert a 'valid' entry (key, value, expiration) makes our purging
@@ -221,6 +234,10 @@ defmodule DCache do
 								if :ets.insert_new(segment, {:__purging, nil, 99999999999}) do
 									purge_segment(segment, max_per_segment)
 								end
+							:blocking ->
+								:ets.delete_all_objects(segment)
+								:ets.insert_new(segment, entry) # re-insert this one we just inserted
+							:none -> :ok
 							fun -> fun.(segment)
 						end
 					end
