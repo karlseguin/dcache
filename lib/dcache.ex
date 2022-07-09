@@ -416,15 +416,38 @@ defmodule DCache do
 	end
 
 	defmodule Entry do
+		@moduledoc """
+		Some cache functions return the internal structure of a key=>value pair
+		stored within the cache. Future versionsof DCache can change this internal
+		structure. This module provides functions to extract the data from this
+		structure so that libraries do not need to know about the structure or worry
+		about future changes.
+		"""
+
+		@doc "
+		Extracts the key from the entry. Returns nil if the entry is nil
+		"
 		def key(nil), do: nil
 		def key({key, _value, _expiry}), do: key
 
+		@doc "
+		Extracts the value from the entry. Returns nil if the entry is nil.
+		"
 		def value(nil), do: nil
 		def value({_key, value, _expiry}), do: value
 
+		@doc "
+		Extracts the ttl in seconds from the entry. Returns nil if the entry is nil.
+		The returned value will be negative for already expired entries.
+		"
 		def ttl(nil), do: nil
 		def ttl(entry), do: expiry(entry) - :erlang.monotonic_time(:second)
 
+		@doc "
+		Extracts the :erlang.monotonic_time(:second) when the entry will expire.
+		Returns nil if the entry is nil. This value will be in the past for already
+		expired entries.
+		"
 		def expiry(nil), do: nil
 		def expiry({_key, _value, expiry}), do: expiry
 	end
