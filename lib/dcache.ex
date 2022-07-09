@@ -172,7 +172,7 @@ defmodule DCache do
 
 		defp get_from_segment(segment, key) do
 			with [{_key, value, expires}] <- :ets.lookup(segment, key),
-			     true <- expires > :erlang.system_time(:second)
+			     true <- expires > :erlang.monotonic_time(:second)
 			do
 				{:ok, value}
 			else
@@ -190,7 +190,7 @@ defmodule DCache do
 		end
 
 		defp put_in_segment(segment, key, value, ttl, max_per_segment, purger) do
-			expires = :erlang.system_time(:second) + ttl
+			expires = :erlang.monotonic_time(:second) + ttl
 			entry = {key, value, expires}
 			case :ets.insert_new(segment, entry) do
 				false -> :ets.insert(segment, entry) # just relace, didn't grow
@@ -288,7 +288,7 @@ defmodule DCache do
 		end
 
 		defp purge_segment(segment, _max_per_segment) do
-			now = :erlang.system_time(:second)
+			now = :erlang.monotonic_time(:second)
 			:ets.safe_fixtable(segment, true)
 
 			# First try to purge expired slots

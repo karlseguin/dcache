@@ -56,7 +56,7 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.fetch("fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta UserCache.expires("fetch4"), :erlang.system_time(:second) + 5, 1
+			assert_in_delta UserCache.expires("fetch4"), :erlang.monotonic_time(:second) + 5, 1
 
 			assert_raise RuntimeError, fn ->
 				UserCache.fetch!("fail", fn _key -> {:error, "fail"} end)
@@ -82,7 +82,7 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.get("take") == {:ok, "b"}
 
 			assert {:ok, {"take", "b", expires}} = UserCache.take("take")
-			assert_in_delta expires, :erlang.system_time(:second) + 10, 1
+			assert_in_delta expires, :erlang.monotonic_time(:second) + 10, 1
 			assert UserCache.get("take") == nil
 		end
 
@@ -139,7 +139,7 @@ defmodule DCache.Tests.DCache do
 			assert DCache.fetch(:users, "fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta DCache.expires(:users, "fetch4"), :erlang.system_time(:second) + 5, 1
+			assert_in_delta DCache.expires(:users, "fetch4"), :erlang.monotonic_time(:second) + 5, 1
 
 			assert_raise RuntimeError, fn ->
 				DCache.fetch!(:users, "fail", fn _key -> {:error, "fail"} end)
@@ -165,7 +165,7 @@ defmodule DCache.Tests.DCache do
 			assert DCache.get(:users, "take") == {:ok, "b"}
 
 			assert {:ok, {"take", "b", expires}} = DCache.take(:users, "take")
-			assert_in_delta expires, :erlang.system_time(:second) + 10, 1
+			assert_in_delta expires, :erlang.monotonic_time(:second) + 10, 1
 			assert DCache.get(:users, "take") == nil
 		end
 
