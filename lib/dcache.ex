@@ -252,14 +252,14 @@ defmodule DCache do
 								# Only do this if purger isn't already running.
 								# Insert a 'valid' entry (key, value, expiration) makes our purging
 								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {:__purging, nil, 99999999999}) do
+								if :ets.insert_new(segment, {:__dcache_purging, nil, 99999999999}) do
 									spawn fn -> purge_segment(segment, max_per_segment) end
 								end
 							:no_spawn ->
 								# Only do this if purger isn't already running
 								# Insert a 'valid' entry (key, value, expiration) makes our purging
 								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {:__purging, nil, 99999999999}) do
+								if :ets.insert_new(segment, {:__dcache_purging, nil, 99999999999}) do
 									purge_segment(segment, max_per_segment)
 								end
 							:blocking ->
@@ -371,7 +371,7 @@ defmodule DCache do
 			end
 		after
 			:ets.safe_fixtable(segment, false)
-			:ets.delete(segment, :__purging)
+			:ets.delete(segment, :__dcache_purging)
 		end
 
 		# Purges expired items

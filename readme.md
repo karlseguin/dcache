@@ -80,7 +80,7 @@ Cache.Users.ttl(key)
 DCache.ttl(:users, key)
 ```
 
-Returns the unix time, in seconds, when the value will be considered expired. Returns `nil` if the key isn't found. This can return a value which is less than now.
+Returns the time, in seconds, when the value will be considered expired. Returns `nil` if the key isn't found. This can return a value which is less than now.
 
 ### put/3 & put/4
 ```elixir
@@ -161,7 +161,7 @@ DCache.destroy(:users)
 
 Destroys the cache. An error will be raised if the cache is used after this is called
 
-### reduce_sements/2 & reduce_sements/3
+### reduce_segments/2 & reduce_segments/3
 ```elixir
 Cache.Users.reduce_segments(0, fn segment, size ->
   size + :ets.info(segment, :size)
@@ -176,7 +176,7 @@ end)
 
 Calls the supplied function for each cache segment. The function receives the segments' ETS table name.
 
-### each_sements/2 & each_sements/3
+### each_segments/2 & each_segments/3
 ```elixir
 Cache.Users.each_segments(fn segment ->
   :ets.delete_all_objects(segment)
@@ -204,7 +204,7 @@ DCache.Entry.ttl(entry)
 DCache.Entry.expires(entry)
 ```
 
-Each of these funtions will return `nil` if `entry` is `nil`. 
+All of these functions will return `nil` if `entry` is `nil`. 
 
 `ttl/1` returns the time in seconds until the entry is considered expired. This can be negative. `expires/1` on the handle returns the `:erlang.monotonic_time(:second)` when the entry will be considered expired.
 
@@ -224,7 +224,7 @@ As an alternative, the `purger: :no_spawn` option can be specified when creating
 
 The `purger: :blocking` option simply uses `:ets.delete_all_objects/1` on the segment. This blocks all operations on the segment (including gets), but is much faster. Using `purger: :blocking` when segments are very small is a reasonable option.
 
-The `purger: :none` option will do nothing when a segment is full. This is an advanced option as it will result in unbound growth. Expird values retrieved with `get` or `fetch` will still be removed from the cache.
+The `purger: :none` option will do nothing when a segment is full. This is an advanced option as it will result in unbound growth. Expired values retrieved with `get` or `fetch` will still be removed from the cache.
 
 Finally, a custom purger can be specified:
 
@@ -235,3 +235,11 @@ DCache.setup(:users, 100_000, purger: &MyApp.Cache.purge_users/1)
 ```
 
 The purger receives the ETS name of the segment that is full.
+
+## Special Keys
+DCache may insert its own internal values into the cache/segments. 
+
+Advanced usage of the cache which involves iterating through segments should be aware of these keys.
+
+### `:__dcache_purging`
+When the purger option is set to `:default` (which is the default) or `:no_spawn`, the `:__dcache_purging` key will inserted before purging begins and deleted at the end of purging (it acts as a sentinel value to ensure that only 1 purger is running on the segment at a time). This is stored as a valid entry with an expiry in the far future expiry.
