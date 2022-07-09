@@ -61,7 +61,7 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.fetch("fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta UserCache.expires("fetch4"), :erlang.monotonic_time(:second) + 5, 1
+			assert_in_delta UserCache.ttl("fetch4"), 5, 1
 
 			assert_raise RuntimeError, fn ->
 				UserCache.fetch!("fail", fn _key -> {:error, "fail"} end)
@@ -86,8 +86,8 @@ defmodule DCache.Tests.DCache do
 			assert UserCache.put("take", "b", 10) == :ok
 			assert UserCache.get("take") == {:ok, "b"}
 
-			assert {:ok, {"take", "b", expires}} = UserCache.take("take")
-			assert_in_delta expires, :erlang.monotonic_time(:second) + 10, 1
+			assert {:ok, entry} = UserCache.take("take")
+			assert_in_delta DCache.Entry.ttl(entry), 10, 1
 			assert UserCache.get("take") == nil
 		end
 
@@ -149,7 +149,7 @@ defmodule DCache.Tests.DCache do
 			assert DCache.fetch(:users, "fetch4", fn _key ->
 				{:ok, "explicit ttl", 5}
 			end, nil) == {:ok, "explicit ttl"}
-			assert_in_delta DCache.expires(:users, "fetch4"), :erlang.monotonic_time(:second) + 5, 1
+			assert_in_delta DCache.ttl(:users, "fetch4"), 5, 1
 
 			assert_raise RuntimeError, fn ->
 				DCache.fetch!(:users, "fail", fn _key -> {:error, "fail"} end)
@@ -174,8 +174,8 @@ defmodule DCache.Tests.DCache do
 			assert DCache.put(:users, "take", "b", 10) == :ok
 			assert DCache.get(:users, "take") == {:ok, "b"}
 
-			assert {:ok, {"take", "b", expires}} = DCache.take(:users, "take")
-			assert_in_delta expires, :erlang.monotonic_time(:second) + 10, 1
+			assert {:ok, entry} = DCache.take(:users, "take")
+			assert_in_delta DCache.Entry.ttl(entry), 10, 1
 			assert DCache.get(:users, "take") == nil
 		end
 
@@ -258,5 +258,21 @@ defmodule DCache.Tests.DCache do
 				assert DCache.get(:c3, i) == {:ok, i}
 			end)
 		end
+	end
+
+	test "entry" do
+
+		assert DCache.Entry.key(nil) == nil
+		assert DCache.Entry.value(nil) == nil
+		assert DCache.Entry.ttl(nil) == nil
+		assert DCache.Entry.expiry(nil) == nil
+
+		UserCache.put("goku", 9001, 100)
+		{:ok, entry} = UserCache.entry("goku")
+
+		assert DCache.Entry.key(entry) == "goku"
+		assert DCache.Entry.value(entry) == 9001
+		assert DCache.Entry.ttl(entry) == 100
+		assert DCache.Entry.expiry(entry) - :erlang.monotonic_time(:second) == 100
 	end
 end

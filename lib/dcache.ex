@@ -35,8 +35,8 @@ defmodule DCache do
 				def del(key), do: DCache.Impl.del(key, @config)
 				def ttl(key), do: DCache.Impl.ttl(key, @config)
 				def take(key), do: DCache.Impl.take(key, @config)
+				def entry(key), do: DCache.Impl.entry(key, @config)
 				def put(key, value, ttl), do: DCache.Impl.put(key, value, ttl, @config)
-				def expires(key), do: DCache.Impl.expires(key, @config)
 				def fetch(key, fun, ttl \\ nil), do: DCache.Impl.fetch(key, fun, ttl, @config)
 				def fetch!(key, fun, ttl \\ nil), do: DCache.Impl.fetch!(key, fun, ttl, @config)
 				def size(), do: DCache.Impl.size(@config)
@@ -80,6 +80,14 @@ defmodule DCache do
 	end
 
 	@doc """
+	Gets the entry from the cache, or nil if not found. The entry will be returned
+	even if it has expired. The entry is an internal representation that can change.
+	You can use `DCache.Entry.key/1`, `DCache.Entry.value/1` and `DCache.Entry.ttl/1`
+	to extract the key, value and ttl from an entry
+	"""
+	def entry(cache, key), do: DCache.Impl.entry(key, get_config(cache))
+
+	@doc """
 	Gets the value from the cache, returning nil if not found or expired
 	"""
 	def get(cache, key), do: DCache.Impl.get(key, get_config(cache))
@@ -102,12 +110,6 @@ defmodule DCache do
 	"""
 	def take(cache, key), do: DCache.Impl.take(key, get_config(cache))
 
-	@doc """
-	Gets the unix time in seconds when the value will be considered expired.
-	Rrturns `nil` if the value is not found. The return value can
-	be in the past
-	"""
-	def expires(cache, key), do: DCache.Impl.expires(key, get_config(cache))
 
 	@doc """
 	Puts the value in the cache. TTL is a relative time in second.
@@ -194,15 +196,28 @@ defmodule DCache do
 		end
 
 		defp get_from_segment(segment, key) do
-			with [{_key, value, expires}] <- :ets.lookup(segment, key),
+			with {:ok, {_key, value, expires}} <- entry_for_segment(segment, key),
 			     true <- expires > :erlang.monotonic_time(:second)
 			do
 				{:ok, value}
 			else
-				[] -> nil
+				nil -> nil
 				false ->
 					:ets.delete(segment, key)
 					nil
+			end
+		end
+
+		def entry(key, {segments, _max_per_segment, _purger}) do
+			key
+			|> segment_for_key(segments)
+			|> entry_for_segment(key)
+		end
+
+		defp entry_for_segment(segment, key) do
+			case :ets.lookup(segment, key) do
+				[entry] -> {:ok, entry}
+				[] -> nil
 			end
 		end
 
@@ -252,10 +267,13 @@ defmodule DCache do
 		end
 
 		def ttl(key, {segments, _max_per_segment, _purger}) do
-			segment = segment_for_key(key, segments)
-			case :ets.lookup(segment, key) do
-				[{_, _, expiry}] -> expiry - :erlang.monotonic_time(:second)
-				_ -> nil
+			entry = key
+			|> segment_for_key(segments)
+			|> entry_for_segment(key)
+
+			case entry do
+				{:ok, entry} -> DCache.Entry.ttl(entry)
+				nil -> nil
 			end
 		end
 
@@ -264,14 +282,6 @@ defmodule DCache do
 			case :ets.take(segment, key) do
 				[] -> nil
 				[item] -> {:ok, item}
-			end
-		end
-
-		def expires(key, {segments, _max_per_segment, _purger}) do
-			segment = segment_for_key(key, segments)
-			case :ets.lookup(segment, key) do
-				[{_, _, expires}] -> expires
-				_ -> nil
 			end
 		end
 
@@ -376,5 +386,19 @@ defmodule DCache do
 			# happens if we call slot/2 with an invalid slot
 			ArgumentError -> purged
 		end
+	end
+
+	defmodule Entry do
+		def key(nil), do: nil
+		def key({key, _value, _expiry}), do: key
+
+		def value(nil), do: nil
+		def value({_key, value, _expiry}), do: value
+
+		def ttl(nil), do: nil
+		def ttl(entry), do: expiry(entry) - :erlang.monotonic_time(:second)
+
+		def expiry(nil), do: nil
+		def expiry({_key, _value, expiry}), do: expiry
 	end
 end

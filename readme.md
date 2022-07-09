@@ -73,15 +73,6 @@ DCache.del(:users, key)
 
 Deletes the value from the cache. Does nothing if the key isn't found. Always returns `:ok`. Use the lower level `take/1` or `take/2` if you need to delete the key and know whether the key existed.
 
-### take/1 & take/2
-```elixir
-Cache.Users.take(key)
-# OR
-DCache.take(:users, key)
-```
-
-Deletes and returns the value from the cache
-
 ### ttl/1 & ttl/2
 ```elixir
 Cache.Users.ttl(key)
@@ -99,7 +90,6 @@ DCache.put(:users, key, value, ttl)
 ```
 
 Stores the value in the cache. The ttl is given in seconds relative to now (e.g. 300 to have the value expire in 5 minutes).
-
 
 ### fetch/2, fetch/3 & fetch/4
 ```elixir
@@ -135,6 +125,24 @@ DCache.size(:users)
 
 Returns the total number of items in the cache, including expired items. This is an O(N) operation where N is the number of segments (which will typically be small).
 
+### take/1 & take/2
+```elixir
+Cache.Users.take(key)
+# OR
+DCache.take(:users, key)
+```
+
+Deletes and returns the [entry](#entry) from the cache.
+
+### entry/1 & entry/2
+```elixir
+Cache.Users.entry(key)
+# OR
+DCache.entry(:users, key)
+```
+
+Returns an [entry](#entry) from the cache. This will return expired entries without removing them.
+
 ### clear/0 & clear/1
 ```elixir
 Cache.Users.clear()
@@ -144,7 +152,6 @@ DCache.clear(:users)
 
 Clears the cache. This blocks all other operations on the cache on a per-segment level, so it should be used sparingly.
 
-
 ### destroy/0 & destroy/1
 ```elixir
 Cache.Users.destroy()
@@ -153,6 +160,23 @@ DCache.destroy(:users)
 ```
 
 Destroys the cache. An error will be raised if the cache is used after this is called
+
+## Entry
+An entry is the internal representation of the data that represents a single key=>value pair. Currently, the entry is a tuple composed of `{key, value, expiry}` but this representation can change from version to version. For most cases, application will not use functions which expose entries. 
+
+In cases where you do need to interact with entries directly (using `take`, `entry` or a custom purger), you can use the DCache.Entry module:
+
+```elixir
+{:ok, entry} = MyApp.Users.take("leto")
+DCache.Entry.key(entry)
+DCache.Entry.value(entry)
+DCache.Entry.ttl(entry)
+DCache.Entry.expires(entry)
+```
+
+Each of these funtions will return `nil` if `entry` is `nil`. 
+
+`ttl/1` returns the time in seconds until the entry is considered expired. This can be negative. `expires/1` on the handle returns the `:erlang.monotonic_time(:second)` when the entry will be considered expired.
 
 ## Option
 Both ways of creating a cache, using the `define/3` macro or calling `DCache.setup/3` takes a keyword list with optional parameters.
