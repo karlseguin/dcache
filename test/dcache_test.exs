@@ -105,6 +105,30 @@ defmodule DCache.Tests.DCache do
 			assert :ets.lookup(DCache.Tests.Cache.Products0, :purger) == [purger: 51]
 			assert :ets.lookup(DCache.Tests.Cache.Products1, :purger) == [purger: 41]
 		end
+
+		test "reduce" do
+			set = UserCache.reduce_segments(MapSet.new(), fn segment, set ->
+				MapSet.put(set, segment)
+			end)
+			assert Enum.sort(MapSet.to_list(set)) == [
+				DCache.Tests.Cache.Users0,
+				DCache.Tests.Cache.Users1,
+				DCache.Tests.Cache.Users2,
+				DCache.Tests.Cache.Users3,
+				DCache.Tests.Cache.Users4,
+				DCache.Tests.Cache.Users5,
+				DCache.Tests.Cache.Users6,
+				DCache.Tests.Cache.Users7,
+				DCache.Tests.Cache.Users8,
+				DCache.Tests.Cache.Users9
+			]
+		end
+
+		test "each_segments" do
+			UserCache.each_segments(fn segment ->
+				assert :ets.info(segment, :size) == 0
+			end)
+		end
 	end
 
 	describe "dynamic" do
@@ -199,6 +223,22 @@ defmodule DCache.Tests.DCache do
 			DCache.put(:temp, "a", 1, 100)
 			DCache.destroy(:temp)
 			assert_raise ArgumentError, fn -> DCache.get(:temp, "a") end
+		end
+
+		test "reduce" do
+			set = DCache.reduce_segments(:users, MapSet.new(), fn segment, set ->
+				MapSet.put(set, segment)
+			end)
+			assert Enum.sort(MapSet.to_list(set)) == [
+				:users0, :users1, :users2, :users3, :users4,
+				:users5, :users6, :users7, :users8, :users9
+			]
+		end
+
+		test "each_segments" do
+			DCache.each_segments(:users, fn segment ->
+				assert :ets.info(segment, :size) == 0
+			end)
 		end
 	end
 

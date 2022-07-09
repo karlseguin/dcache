@@ -40,6 +40,8 @@ defmodule DCache do
 				def fetch(key, fun, ttl \\ nil), do: DCache.Impl.fetch(key, fun, ttl, @config)
 				def fetch!(key, fun, ttl \\ nil), do: DCache.Impl.fetch!(key, fun, ttl, @config)
 				def size(), do: DCache.Impl.size(@config)
+				def each_segments(fun), do: DCache.Impl.each_segments(fun, @config)
+				def reduce_segments(acc, fun), do: DCache.Impl.reduce_segments(acc, fun, @config)
 			end
 		end
 	end
@@ -139,6 +141,17 @@ defmodule DCache do
 	"""
 	def size(cache), do: DCache.Impl.size(get_config(cache))
 
+	@doc """
+	Reduces each segment name. `fun` will receive the segment name (which is the name
+	of an ETS table) plus the accumulator
+	"""
+	def reduce_segments(cache, acc, fun), do: DCache.Impl.reduce_segments(acc, fun, get_config(cache))
+
+	@doc """
+	Iterates each segment name. `fun` will receive the segment name.
+	"""
+	def each_segments(cache, fun), do: DCache.Impl.each_segments(fun, get_config(cache))
+
 	defp get_config(cache) do
 		[{_, config}] = :ets.lookup(cache, :config)
 		config
@@ -164,7 +177,7 @@ defmodule DCache do
 		end
 
 		def setup({segments, _max_per_segment, _purger}) do
-			reduce_segments(segments, nil, fn segment, _->
+			do_reduce_segments(segments, nil, fn segment, _->
 				:ets.new(segment, [
 					:set,
 					:public,
@@ -178,13 +191,13 @@ defmodule DCache do
 		end
 
 		def clear({segments, _max_per_segment, _purger}) do
-			reduce_segments(segments, nil, fn segment, _ ->
+			do_reduce_segments(segments, nil, fn segment, _ ->
 				:ets.delete_all_objects(segment)
 			end)
 		end
 
 		def destroy({segments, _max_per_segment, _purger}) do
-			reduce_segments(segments, nil, fn segment, _ ->
+			do_reduce_segments(segments, nil, fn segment, _ ->
 				:ets.delete(segment)
 			end)
 		end
@@ -313,15 +326,29 @@ defmodule DCache do
 		end
 
 		def size({segments, _max_per_segment, _purger}) do
-			reduce_segments(segments, 0, fn segment, count ->
-				count + :ets.info(segment, :size)
+			do_reduce_segments(segments, 0, fn segment, size ->
+				size + :ets.info(segment, :size)
 			end)
 		end
 
-		defp reduce_segments(segments, acc, fun) do
+		def reduce_segments(acc, fun, {segments, _max_per_segment, _purger}) do
+			do_reduce_segments(segments, acc, fun)
+		end
+
+		# many internal calls have a `segments` instead of a whole config
+		defp do_reduce_segments(segments, acc, fun) do
 			Enum.reduce(0..tuple_size(segments)-1, acc, fn i, acc ->
 				fun.(elem(segments, i), acc)
 			end)
+		end
+
+		def each_segments(fun, {segments, _max_per_segment, _purger}) do
+			do_each_segments(segments, fun)
+		end
+
+		def do_each_segments(segments, fun) do
+			do_reduce_segments(segments, nil, fn segment, _ -> fun.(segment) end)
+			:ok
 		end
 
 		# really small, just lock it and delete it

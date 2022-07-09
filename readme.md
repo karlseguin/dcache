@@ -161,6 +161,36 @@ DCache.destroy(:users)
 
 Destroys the cache. An error will be raised if the cache is used after this is called
 
+### reduce_sements/2 & reduce_sements/3
+```elixir
+Cache.Users.reduce_segments(0, fn segment, size ->
+  size + :ets.info(segment, :size)
+end)
+
+# OR
+
+DCache.reduce_segments(:users, 0, fn segment, size ->
+  size + :ets.info(segment, :size)
+end)
+```
+
+Calls the supplied function for each cache segment. The function receives the segments' ETS table name.
+
+### each_sements/2 & each_sements/3
+```elixir
+Cache.Users.each_segments(fn segment ->
+  :ets.delete_all_objects(segment)
+end)
+
+# OR
+
+DCache.each_segments(:users, fn segment ->
+  :ets.delete_all_objects(segment)
+end)
+```
+
+Calls the supplied function for each cache segment. The function receives the segments' ETS table name.
+
 ## Entry
 An entry is the internal representation of the data that represents a single key=>value pair. Currently, the entry is a tuple composed of `{key, value, expiry}` but this representation can change from version to version. For most cases, application will not use functions which expose entries. 
 
