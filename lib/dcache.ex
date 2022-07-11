@@ -252,14 +252,14 @@ defmodule DCache do
 								# Only do this if purger isn't already running.
 								# Insert a 'valid' entry (key, value, expiration) makes our purging
 								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {:__dcache_purging, nil, 99999999999}) do
+								if :ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999}) do
 									spawn fn -> purge_segment(segment, max_per_segment) end
 								end
 							:no_spawn ->
 								# Only do this if purger isn't already running
 								# Insert a 'valid' entry (key, value, expiration) makes our purging
 								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {:__dcache_purging, nil, 99999999999}) do
+								if :ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999}) do
 									purge_segment(segment, max_per_segment)
 								end
 							:blocking ->
@@ -371,7 +371,7 @@ defmodule DCache do
 			end
 		after
 			:ets.safe_fixtable(segment, false)
-			:ets.delete(segment, :__dcache_purging)
+			:ets.delete(segment, {:dcache, :purging})
 		end
 
 		# Purges expired items
@@ -392,26 +392,33 @@ defmodule DCache do
 
 		# Purges random (expired or not) items. We need to make space
 		defp purge_slots_random(segment, max_slot) do
-			start_slot = max(:rand.uniform(max_slot) - 100, 0)
-			end_slot = min(start_slot + 200, max_slot - 1)
-			purge_slot_range(segment, start_slot, end_slot, 0)
+			start_slot = :rand.uniform(max_slot) - 1
+			case find_random_key(segment, start_slot + 1, start_slot) do
+				{:ok, key} -> purge_iterator(segment, key, 0)
+				nil -> 0
+			end
 		end
 
-		defp purge_slot_range(_segment, slot, end_slot, purged) when slot > end_slot, do: purged
-		defp purge_slot_range(segment, slot, end_slot, purged) do
+		# we've gone full circle
+		defp find_random_key(_segment, start_slot, start_slot), do: nil
+
+		defp find_random_key(segment, slot, start_slot) do
 			case :ets.slot(segment, slot) do
-				:'$end_of_table' -> purged
-				entries ->
-					purged =
-						Enum.reduce(entries, purged, fn {key, _value, _expires}, purged ->
-							:ets.delete(segment, key)
-							purged + 1
-						end)
-					purge_slot_range(segment, slot + 1, end_slot, purged)
+				[] -> find_random_key(segment, slot + 1, start_slot)
+				:'$end_of_table' -> find_random_key(segment, 0, start_slot)
+				[{key, _value, _expiry} | _] -> {:ok, key}
 			end
-		rescue
-			# happens if we call slot/2 with an invalid slot
-			ArgumentError -> purged
+		end
+
+		defp purge_iterator(segment, {:dcache, :purging} = key, purged) do
+			purge_iterator(segment, :ets.next(segment, key), purged)
+		end
+
+		defp purge_iterator(_segment, _key, 100), do: 100
+		defp purge_iterator(_segment, :'$end_of_table', purged), do: purged
+		defp purge_iterator(segment, key, purged) do
+			:ets.delete(segment, key)
+			purge_iterator(segment, :ets.next(segment, key), purged + 1)
 		end
 	end
 

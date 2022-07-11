@@ -237,9 +237,9 @@ DCache.setup(:users, 100_000, purger: &MyApp.Cache.purge_users/1)
 The purger receives the ETS name of the segment that is full.
 
 ## Special Keys
-DCache may insert its own internal values into the cache/segments. 
+DCache may insert its own internal values into the cache/segments. These keys will always be a tuple where the first value is `:dcache`.
 
 Advanced usage of the cache which involves iterating through segments should be aware of these keys.
 
-### `:__dcache_purging`
-When the purger option is set to `:default` (which is the default) or `:no_spawn`, the `:__dcache_purging` key will inserted before purging begins and deleted at the end of purging (it acts as a sentinel value to ensure that only 1 purger is running on the segment at a time). This is stored as a valid entry with an expiry in the far future expiry.
+### `{:dcache, :purging}`
+When the purger option is set to `:default` (which is the default) or `:no_spawn`, the `{:dcache, :purging}` key will inserted before purging begins and deleted at the end of purging (it acts as a sentinel value to ensure that only 1 purger is running on the segment at a time). This is stored as a valid entry with an expiry in the far future expiry.
