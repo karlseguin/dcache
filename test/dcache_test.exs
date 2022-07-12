@@ -272,17 +272,14 @@ defmodule DCache.Tests.DCache do
 		end
 
 		test "random-based" do
-			DCache.setup(:c1, 1_000, segments: 5, purger: :default)
-			DCache.setup(:c2, 1_000, segments: 5, purger: :no_spawn)
+			DCache.setup(:c1, 1_000, segments: 5, purger: :no_spawn)
 			Enum.each(1..1001, fn i ->
 				DCache.put(:c1, i, i, 10)
-				DCache.put(:c2, i, i, 10)
 			end)
 
 			# we don't know for sure what happened, but we do know
 			# that some items, even though they aren't expired, should have been purged
-			assert DCache.size(:c1) < 900
-			assert DCache.size(:c2) < 900
+			assert DCache.size(:c1) < 990
 		end
 
 		test "none purger" do
@@ -301,7 +298,6 @@ defmodule DCache.Tests.DCache do
 	end
 
 	test "entry" do
-
 		assert DCache.Entry.key(nil) == nil
 		assert DCache.Entry.value(nil) == nil
 		assert DCache.Entry.ttl(nil) == nil

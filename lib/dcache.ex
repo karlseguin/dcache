@@ -161,7 +161,6 @@ defmodule DCache do
 		@moduledoc false
 
 		def config(cache, max, opts) do
-			purger = Keyword.get(opts, :purger, :default)
 			segment_count = Keyword.get_lazy(opts, :segments, fn ->
 				cond do
 					max >= 10_000 -> 100
@@ -170,9 +169,14 @@ defmodule DCache do
 					true -> 1
 				end
 			end)
+
 			segments = Enum.map(0..(segment_count)-1, fn i ->
 				String.to_atom("#{cache}#{i}")
 			end)
+
+			purger = case opts[:purger] do
+
+			end
 			{List.to_tuple(segments), trunc(max / segment_count), purger}
 		end
 
@@ -356,7 +360,7 @@ defmodule DCache do
 			:ets.delete_all_objects(segment)
 		end
 
-		defp purge_segment(segment, _max_per_segment) do
+		defp purge_segment(segment, max_per_segment) do
 			now = :erlang.monotonic_time(:second)
 			:ets.safe_fixtable(segment, true)
 
@@ -364,7 +368,8 @@ defmodule DCache do
 			# If we don't purge anything, purge random slots
 			# If we still haven't purged anything, then purge everything
 			with {0, max_slot} <- purge_slots_expired(segment, 0, now, 0),
-			     0 <- purge_slots_random(segment, max_slot)
+			     max_to_purge <- min(trunc(max_per_segment * 0.05), 1000),
+			     0 <- purge_slots_random(segment, max_slot, max_to_purge)
 			do
 				# what else to do?
 				:ets.delete_all_objects(segment)
@@ -391,11 +396,11 @@ defmodule DCache do
 		end
 
 		# Purges random (expired or not) items. We need to make space
-		defp purge_slots_random(segment, max_slot) do
+		defp purge_slots_random(segment, max_slot, max_to_purge) do
 			start_slot = :rand.uniform(max_slot) - 1
 			case find_random_key(segment, start_slot + 1, start_slot) do
-				{:ok, key} -> purge_iterator(segment, key, 0)
 				nil -> 0
+				{:ok, key} -> purge_iterator(segment, key, 0, max_to_purge)
 			end
 		end
 
@@ -410,15 +415,16 @@ defmodule DCache do
 			end
 		end
 
-		defp purge_iterator(segment, {:dcache, :purging} = key, purged) do
-			purge_iterator(segment, :ets.next(segment, key), purged)
+		defp purge_iterator(segment, {:dcache, :purging} = key, purged, max_to_purge) do
+			purge_iterator(segment, :ets.next(segment, key), purged, max_to_purge)
 		end
 
-		defp purge_iterator(_segment, _key, 100), do: 100
-		defp purge_iterator(_segment, :'$end_of_table', purged), do: purged
-		defp purge_iterator(segment, key, purged) do
+		# we've purged the maximum we've been told to
+		defp purge_iterator(_segment, _key, max_to_purge, max_to_purge), do: max_to_purge
+		defp purge_iterator(_segment, :'$end_of_table', purged, _max_to_purge), do: purged
+		defp purge_iterator(segment, key, purged, max_to_purge) do
 			:ets.delete(segment, key)
-			purge_iterator(segment, :ets.next(segment, key), purged + 1)
+			purge_iterator(segment, :ets.next(segment, key), purged + 1, max_to_purge)
 		end
 	end
 
