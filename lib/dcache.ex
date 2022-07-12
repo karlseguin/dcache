@@ -20,8 +20,10 @@ defmodule DCache do
 				The number of segments to create (defaults to 100, 10, 3 or 1) depending on `max`
 
 			purger: symbol | function
-				The purger to use, defaults to `:default`
-				Supported values: `:default`, `:no_spawn`, `:blocking`, `:none` or a custom function
+				The purger to use, defaults to `:fast`
+				Supported values:
+					`:fast`, `:fast_no_spawn`, `:expired`,`:expired_no_spawn`,
+					`:blocking`, `:none` or a custom function
 	"""
 	defmacro define(cache, max, opts \\ []) do
 		quote location: :keep do
@@ -174,9 +176,7 @@ defmodule DCache do
 				String.to_atom("#{cache}#{i}")
 			end)
 
-			purger = case opts[:purger] do
-
-			end
+			purger = Keyword.get(opts, :purger, :fast)
 			{List.to_tuple(segments), trunc(max / segment_count), purger}
 		end
 
@@ -252,18 +252,20 @@ defmodule DCache do
 				true ->
 					if :ets.info(segment, :size) > max_per_segment do
 						case purger do
-							:default ->
-								# Only do this if purger isn't already running.
-								# Insert a 'valid' entry (key, value, expiration) makes our purging
-								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999}) do
+							:fast ->
+								if lock_purging(segment) do
+									spawn fn -> purge_fast(segment, max_per_segment) end
+								end
+							:fast_no_spawn ->
+								if lock_purging(segment) do
+									purge_fast(segment, max_per_segment)
+								end
+							:expired ->
+								if lock_purging(segment) do
 									spawn fn -> purge_segment(segment, max_per_segment) end
 								end
-							:no_spawn ->
-								# Only do this if purger isn't already running
-								# Insert a 'valid' entry (key, value, expiration) makes our purging
-								# simpler, as it doesn't have to special-case this key
-								if :ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999}) do
+							:expired_no_spawn ->
+								if lock_purging(segment) do
 									purge_segment(segment, max_per_segment)
 								end
 							:blocking ->
@@ -355,6 +357,10 @@ defmodule DCache do
 			:ok
 		end
 
+		defp lock_purging(segment) do
+			:ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999})
+		end
+
 		# really small, just lock it and delete it
 		defp purge_segment(segment, max_per_segment) when max_per_segment < 100 do
 			:ets.delete_all_objects(segment)
@@ -365,14 +371,10 @@ defmodule DCache do
 			:ets.safe_fixtable(segment, true)
 
 			# First try to purge expired slots
-			# If we don't purge anything, purge random slots
-			# If we still haven't purged anything, then purge everything
-			with {0, max_slot} <- purge_slots_expired(segment, 0, now, 0),
-			     max_to_purge <- min(trunc(max_per_segment * 0.05), 1000),
-			     0 <- purge_slots_random(segment, max_slot, max_to_purge)
+			# If we don't purge anything, purge "random" slots
+			with 0 <- purge_slots_expired(segment, 0, now, 0)
 			do
-				# what else to do?
-				:ets.delete_all_objects(segment)
+				purge_iterator(segment, max_per_segment)
 			end
 		after
 			:ets.safe_fixtable(segment, false)
@@ -382,7 +384,7 @@ defmodule DCache do
 		# Purges expired items
 		defp purge_slots_expired(segment, slot, now, purged) do
 			case :ets.slot(segment, slot) do
-				:'$end_of_table' -> {purged, slot}
+				:'$end_of_table' -> purged
 				entries ->
 					purged =
 						Enum.reduce(entries, purged, fn {key, _, expires}, purged ->
@@ -395,30 +397,27 @@ defmodule DCache do
 			end
 		end
 
-		# Purges random (expired or not) items. We need to make space
-		defp purge_slots_random(segment, max_slot, max_to_purge) do
-			start_slot = :rand.uniform(max_slot) - 1
-			case find_random_key(segment, start_slot + 1, start_slot) do
-				nil -> 0
-				{:ok, key} -> purge_iterator(segment, key, 0, max_to_purge)
-			end
+		defp purge_fast(segment, max_per_segment) do
+			:ets.safe_fixtable(segment, true)
+			purge_iterator(segment, max_per_segment)
+		after
+			:ets.safe_fixtable(segment, false)
+			:ets.delete(segment, {:dcache, :purging})
 		end
 
-		# we've gone full circle
-		defp find_random_key(_segment, start_slot, start_slot), do: nil
-
-		defp find_random_key(segment, slot, start_slot) do
-			case :ets.slot(segment, slot) do
-				[] -> find_random_key(segment, slot + 1, start_slot)
-				:'$end_of_table' -> find_random_key(segment, 0, start_slot)
-				[{key, _value, _expiry} | _] -> {:ok, key}
+		defp purge_iterator(segment, max_per_segment) do
+			max_to_purge = max_per_segment * 0.05
+			max_to_purge = cond do
+				max_to_purge > 1000 -> 1000
+				max_to_purge < 10 -> 10
+				true -> max_to_purge
 			end
+			purge_iterator(segment, :ets.first(segment), 0, max_to_purge)
 		end
 
 		defp purge_iterator(segment, {:dcache, :purging} = key, purged, max_to_purge) do
 			purge_iterator(segment, :ets.next(segment, key), purged, max_to_purge)
 		end
-
 		# we've purged the maximum we've been told to
 		defp purge_iterator(_segment, _key, max_to_purge, max_to_purge), do: max_to_purge
 		defp purge_iterator(_segment, :'$end_of_table', purged, _max_to_purge), do: purged

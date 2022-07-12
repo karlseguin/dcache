@@ -1,6 +1,6 @@
 defmodule DCache.Tests.Cache do
 	require DCache
-	DCache.define(Users, 100, purger: :no_spawn)
+	DCache.define(Users, 100, purger: :fast_no_spawn)
 
 	DCache.define(Products, 10, segments: 2, purger: &DCache.Tests.Cache.custom_purger/1)
 
