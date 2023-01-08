@@ -20,7 +20,11 @@ The preferred usage, which offers better performance, is to use the `define/3` m
 defmodule MyApp.Cache do
   require DCache
 
+  # create a cache, named Users that can hold ~ 100_000 items
   DCache.define(Users, 100_000)
+
+  # create a cache, named Products, that can hold ~1_000_000 items split
+  # into 100 segments.
   DCache.define(Products, 1_000_000, segment: 100)
 end
 ```
@@ -62,7 +66,7 @@ Cache.Users.get(key)
 DCache.get(:users, key)
 ```
 
-Returns the value from the cache. Returns `nil` if the key isn't found or if the value is expired.
+Returns the value from the cache. Returns `nil` if the key isn't found or if the value is expired. Use `entry/1` or `entry/2` to retrieve expired items.
 
 ### del/1 & del/2
 ```elixir
@@ -163,6 +167,8 @@ Destroys the cache. An error will be raised if the cache is used after this is c
 
 ### reduce_segments/2 & reduce_segments/3
 ```elixir
+
+# an example of how the size of the cache could be calculated (this is essentially what size/0 does)
 Cache.Users.reduce_segments(0, fn segment, size ->
   size + :ets.info(segment, :size)
 end)
@@ -175,9 +181,10 @@ end)
 ```
 
 Calls the supplied function for each cache segment. The function receives the segments' ETS table name.
-
 ### each_segments/2 & each_segments/3
 ```elixir
+
+# an example of how the cache could be emptied (this is essentially what clear/0 does)
 Cache.Users.each_segments(fn segment ->
   :ets.delete_all_objects(segment)
 end)
@@ -194,7 +201,7 @@ Calls the supplied function for each cache segment. The function receives the se
 ## Entry
 An entry is the internal representation of the data that represents a single key=>value pair. Currently, the entry is a tuple composed of `{key, value, expiry}` but this representation can change from version to version. For most cases, application will not use functions which expose entries. 
 
-In cases where you do need to interact with entries directly (using `take`, `entry` or a custom purger), you can use the DCache.Entry module:
+In cases where you do need to interact with entries directly (using `take`, `entry` or a custom purger), you can use the DCache.Entry module to help abstract the internal representation:
 
 ```elixir
 {:ok, entry} = MyApp.Users.take("leto")
@@ -220,10 +227,9 @@ Whenever a segment needs to grow, the size of the segment is compared against th
 
 The default purger, `:fast` spawns a process and "randomly" remove keys from the cache. There are a lot of reasons not to like this purger. For one, it will evict non-expired entries even if expired entries exist. For another, the "randomness" will favor some values over another. Still, this is the default because it has a fixed cost: it will scan/delete no more than 1000 entries. Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.)
 
-
 The `:fast_no_spawn` behaves exactly like the `:fast` purger, but will not spawn a new process. Instead the purge operation will run as part of the the `put` or `fetch` operation that caused the insert, blocking it. Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.)
 
-The `:expired` purger spawns a process and removes all expired values from the segment. If no expired keys exist, the purger falls back to the `:fast` purger.  Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.) Thisis NOT the default because the worst-case performance is a complete scan of the segment (and even this might not delete anything).
+The `:expired` purger spawns a process and removes all expired values from the segment. If no expired keys exist, the purger falls back to the `:fast` purger.  Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.) This is NOT the default because the worst-case performance is a complete scan of the segment (and even this might not delete anything).
 
 The `:expired_no_spawn` behaves exactly like the `:expired` purger, but will not spawn a new process. Instead the purge operation will run as part of the the `put` or `fetch` operation that caused the insert, blocking it. Only 1 purger per segment is allowed to run at a time (a sentinel value within the segment is used.)
 
@@ -247,4 +253,4 @@ DCache may insert its own internal values into the cache/segments. These keys wi
 Advanced usage of the cache which involves iterating through segments should be aware of these keys.
 
 ### `{:dcache, :purging}`
-When the purger option is set to `:default` (which is the default) or `:no_spawn`, the `{:dcache, :purging}` key will inserted before purging begins and deleted at the end of purging (it acts as a sentinel value to ensure that only 1 purger is running on the segment at a time). This is stored as a valid entry with an expiry in the far future expiry.
+When the purger option is set to `:default` (which is the default) or `:no_spawn`, the `{:dcache, :purging}` key will be inserted before purging begins and deleted at the end of purging (it acts as a sentinel value to ensure that only 1 purger is running on the segment at a time). This is stored as a valid entry with an expiry in the far future.

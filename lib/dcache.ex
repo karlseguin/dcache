@@ -162,6 +162,8 @@ defmodule DCache do
 	defmodule Impl do
 		@moduledoc false
 
+		@purging_flag {:dcache, :purging}
+
 		def config(cache, max, opts) do
 			segment_count = Keyword.get_lazy(opts, :segments, fn ->
 				cond do
@@ -248,7 +250,7 @@ defmodule DCache do
 			expires = :erlang.monotonic_time(:second) + ttl
 			entry = {key, value, expires}
 			case :ets.insert_new(segment, entry) do
-				false -> :ets.insert(segment, entry) # just relace, didn't grow
+				false -> :ets.insert(segment, entry) # just replace, didn't grow
 				true ->
 					if :ets.info(segment, :size) > max_per_segment do
 						case purger do
@@ -358,7 +360,7 @@ defmodule DCache do
 		end
 
 		defp lock_purging(segment) do
-			:ets.insert_new(segment, {{:dcache, :purging}, nil, 99999999999})
+			:ets.insert_new(segment, {@purging_flag, nil, 99999999999})
 		end
 
 		# really small, just lock it and delete it
@@ -378,7 +380,7 @@ defmodule DCache do
 			end
 		after
 			:ets.safe_fixtable(segment, false)
-			:ets.delete(segment, {:dcache, :purging})
+			:ets.delete(segment, @purging_flag)
 		end
 
 		# Purges expired items
@@ -402,7 +404,7 @@ defmodule DCache do
 			purge_iterator(segment, max_per_segment)
 		after
 			:ets.safe_fixtable(segment, false)
-			:ets.delete(segment, {:dcache, :purging})
+			:ets.delete(segment, @purging_flag)
 		end
 
 		defp purge_iterator(segment, max_per_segment) do
@@ -415,7 +417,7 @@ defmodule DCache do
 			purge_iterator(segment, :ets.first(segment), 0, max_to_purge)
 		end
 
-		defp purge_iterator(segment, {:dcache, :purging} = key, purged, max_to_purge) do
+		defp purge_iterator(segment, @purging_flag = key, purged, max_to_purge) do
 			purge_iterator(segment, :ets.next(segment, key), purged, max_to_purge)
 		end
 		# we've purged the maximum we've been told to
@@ -430,7 +432,7 @@ defmodule DCache do
 	defmodule Entry do
 		@moduledoc """
 		Some cache functions return the internal structure of a key=>value pair
-		stored within the cache. Future versionsof DCache can change this internal
+		stored within the cache. Future versions of DCache can change this internal
 		structure. This module provides functions to extract the data from this
 		structure so that libraries do not need to know about the structure or worry
 		about future changes.
